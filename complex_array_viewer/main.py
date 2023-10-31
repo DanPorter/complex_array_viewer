@@ -1,5 +1,6 @@
 """
-
+Complex Array Viewer
+Definition of tkinter interface
 """
 
 
@@ -11,6 +12,9 @@ from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.backends.backend_tkagg import NavigationToolbar2Tk as NavigationToolbar2TkAgg
 
+# Version
+__version__ = '0.1.1'
+__date__ = '2023-10-31'
 
 # Fonts
 TF = ["Times", 12]  # entry
@@ -35,7 +39,6 @@ ety_txt = 'black'
 opt_txt = 'black'
 ttl_txt = 'black'
 _figure_size = [14, 6]
-_figure_dpi = 100
 
 
 def start():
@@ -54,11 +57,11 @@ class ComplexArrayViewer:
         ComplexArrayViewer()
     """
 
-    def __init__(self, filename=None):
+    def __init__(self, filename=None, figure_dpi=100):
         """Initialise"""
         # Create Tk inter instance
         self.root = tk.Tk()
-        self.root.wm_title('Array Viewer')
+        self.root.wm_title(f'Complex Array Viewer   (Version: {__version__}, Date: {__date__})')
         # self.root.minsize(width=640, height=480)
         self.root.maxsize(width=self.root.winfo_screenwidth(), height=self.root.winfo_screenheight())
         self.root.tk_setPalette(
@@ -87,7 +90,7 @@ class ComplexArrayViewer:
         self.sinplot = tk.BooleanVar(frame, False)
         self.cmin = tk.DoubleVar(frame, 0)
         self.cmax = tk.DoubleVar(frame, np.max(self.mags))
-        self.colormap = tk.StringVar(frame, 'viridis')
+        self.colormap = tk.StringVar(frame, 'twilight')
         all_colormaps = ['viridis', 'Spectral', 'plasma', 'inferno', 'Greys', 'Blues', 'winter', 'autumn',
                          'hot', 'hot_r', 'hsv', 'rainbow', 'jet', 'twilight', 'hsv']
 
@@ -168,7 +171,7 @@ class ComplexArrayViewer:
         var.bind('<KP_Enter>', self.update_image)
 
         # ---Images---
-        self.fig = Figure(figsize=_figure_size, dpi=_figure_dpi)
+        self.fig = Figure(figsize=_figure_size, dpi=figure_dpi)
         self.fig.patch.set_facecolor('w')
         # Amplitude
         self.ax1 = self.fig.add_subplot(121)
