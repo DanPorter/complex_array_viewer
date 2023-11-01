@@ -3,18 +3,17 @@ Complex Array Viewer
 Definition of tkinter interface
 """
 
-
 import numpy as np
 import tkinter as tk
-from tkinter import filedialog
 from tkinter import messagebox
+from tkinter import filedialog
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.backends.backend_tkagg import NavigationToolbar2Tk as NavigationToolbar2TkAgg
 
 # Version
-__version__ = '0.1.1'
-__date__ = '2023-10-31'
+__version__ = '0.2.0'
+__date__ = '2023-11-01'
 
 # Fonts
 TF = ["Times", 12]  # entry
@@ -41,14 +40,31 @@ ttl_txt = 'black'
 _figure_size = [14, 6]
 
 
-def start():
-    """Start viewer"""
-    filename = filedialog.askopenfilename(
+def _diff3d(array):
+    """Calculate the 3D derivative"""
+    out = np.sqrt(
+        np.gradient(array, axis=0)**2 +
+        np.gradient(array, axis=1)**2 +
+        np.gradient(array, axis=2)**2
+    )
+    return out
+
+
+def select_files():
+    """Select file(s) Start viewer"""
+    root = tk.Tk()
+    root.withdraw()
+    filenames = filedialog.askopenfilenames(
+        parent=root,
         title='Select .npy to open',
         filetypes=[('NPY file', '.npy'), ('All files', '.*')],
     )
-    if filename:
-        ComplexArrayViewer(filename)
+    if filenames:
+        if len(filenames) == 1:
+            ComplexArrayViewer(filenames[0])
+        else:
+            from multi_angle_viewer import MultiAngleViewer
+            MultiAngleViewer(filenames)
 
 
 class ComplexArrayViewer:
@@ -88,6 +104,8 @@ class ComplexArrayViewer:
         self.degplot = tk.BooleanVar(frame, False)
         self.absplot = tk.BooleanVar(frame, False)
         self.sinplot = tk.BooleanVar(frame, False)
+        self.difplot = tk.BooleanVar(frame, False)
+        self.mask = tk.DoubleVar(frame, 0)
         self.cmin = tk.DoubleVar(frame, 0)
         self.cmax = tk.DoubleVar(frame, np.max(self.mags))
         self.colormap = tk.StringVar(frame, 'twilight')
@@ -120,6 +138,15 @@ class ComplexArrayViewer:
         var.pack(side=tk.LEFT, padx=6)
         var = tk.Checkbutton(frm, text='sin phase', variable=self.sinplot, font=SF, command=self.update_options)
         var.pack(side=tk.LEFT, padx=6)
+        var = tk.Checkbutton(frm, text='Diff', variable=self.difplot, font=SF, command=self.update_options)
+        var.pack(side=tk.LEFT, padx=6)
+
+        var = tk.Label(frm, text='Mask <', font=SF)
+        var.pack(side=tk.LEFT, expand=tk.NO, padx=6)
+        var = tk.Entry(frm, textvariable=self.mask, font=TF, width=6, bg=ety, fg=ety_txt)
+        var.pack(side=tk.LEFT, padx=6)
+        var.bind('<Return>', self.update_options)
+        var.bind('<KP_Enter>', self.update_options)
 
         var = tk.OptionMenu(frm, self.colormap, *all_colormaps, command=self.update_image)
         var.config(font=SF, bg=opt, activebackground=opt_active)
@@ -220,20 +247,29 @@ class ComplexArrayViewer:
         """Load NPY file"""
         data = np.load(filename)
         print(f'Filename: {filename}')
-        print(f'Data shape: {data.shape}, type: {data.dtype}, max: {data.max()}, min: {data.min()}')
+        print(f'Data shape: {data.shape}, type: {data.dtype}, max: {np.max(data)}, min: {np.min(data)}')
         if np.ndim(data) != 3:
-            raise Exception('Numpy Data should have 3 dimensions.')
+            msg = 'Numpy Data should have 3 dimensions, this file has %d.' % np.ndim(data)
+            messagebox.showerror(
+                parent=self.root,
+                title='NPY File error',
+                message=msg
+            )
+            raise Exception(msg)
         self.filename.set(filename)
         self.data = data
+        self._update_axis()
         self.update_options()
 
-    def update_options(self):
+    def update_options(self, event=None):
         """Get options"""
         self.mags = np.abs(self.data)
-        mask = self.mags == 0
+        mask = self.mags <= self.mask.get()
         self.mags[mask] = np.nan
         if self.logplot.get():
             self.mags = np.log10(self.mags)
+        if self.difplot.get():
+            self.mags = _diff3d(self.mags)
         self.cmin.set(float(np.nanmin(self.mags)) if self.logplot.get() else 0)
         self.cmax.set(float(np.nanmax(self.mags)))
 
@@ -249,20 +285,17 @@ class ComplexArrayViewer:
         if self.degplot.get():
             self.angs = np.rad2deg(self.angs)
             clim = [-180, 180]
+        if self.difplot.get():
+            self.angs = _diff3d(self.angs)
         self.angs[mask] = np.nan
         self.ang_clim = clim
+        self.update_image()
 
-        self.update_axis()
-        # self.cb1.update_normal(self.ax1_image)
-        # self.cb2.update_normal(self.ax2_image)
-        # self.toolbar.update()
-        # self.fig.canvas.draw()
-
-    def update_axis(self, event=None):
+    def _update_axis(self):
         """Get data size etc"""
         self._ax = int(self.view_axis.get()[-1]) - 1  # e.g. 'axis 1'
-        shape = self.mags.shape
-        self.tkscale.config(to=shape[self._ax])
+        shape = self.data.shape
+        self.tkscale.config(to=shape[self._ax])  # set slider max
         if self._ax == 0:
             self.ax1.set_xlabel(u'Axis 2')
             self.ax1.set_ylabel(u'Axis 3')
@@ -291,6 +324,10 @@ class ComplexArrayViewer:
             self.ax2.set_xlim([0, shape[0]])
             self.ax2.set_ylim([0, shape[1]])
         self.view_index.set(shape[self._ax]//2)
+
+    def update_axis(self, event=None):
+        """Get data size etc"""
+        self._update_axis()
         self.update_image()
 
     def update_image(self, event=None):
@@ -313,6 +350,8 @@ class ComplexArrayViewer:
         self.ax2_image = self.ax2.pcolormesh(im_ang, shading='auto', clim=self.ang_clim, cmap=colormap)
         self.cb1.update_normal(self.ax1_image)
         self.cb2.update_normal(self.ax2_image)
+        self.ax1_image.set_clim(mag_clim)
+        self.ax2_image.set_clim(self.ang_clim)
         self.toolbar.update()
         self.fig.canvas.draw()
 
@@ -342,4 +381,3 @@ class ComplexArrayViewer:
     def on_closing(self):
         """Closes the current window"""
         self.root.destroy()
-
